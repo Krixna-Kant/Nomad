@@ -8,11 +8,19 @@ export async function POST(request: Request) {
       origin?: string;
       destination?: string;
       loves?: ResolvedEntity[];
+      freeDays?: string[];
+      goals?: string[];
     };
 
     const origin = body.origin?.trim() ?? "";
     const destination = body.destination?.trim() ?? "";
     const loves = body.loves ?? [];
+    const freeDays = Array.isArray(body.freeDays)
+      ? body.freeDays.filter((day): day is string => typeof day === "string").slice(0, 7)
+      : [];
+    const goals = Array.isArray(body.goals)
+      ? body.goals.filter((goal): goal is string => typeof goal === "string").slice(0, 6)
+      : [];
 
     if (!origin || !destination) {
       return NextResponse.json(
@@ -27,7 +35,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await transplantTaste(origin, destination, loves);
+    const result = await transplantTaste(origin, destination, loves, {
+      freeDays,
+      goals,
+    });
     return NextResponse.json(result);
   } catch (error) {
     const message =

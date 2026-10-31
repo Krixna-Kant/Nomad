@@ -51,7 +51,12 @@ const NOISE = new Set(
     "wheelchair accessible parking lot",
     "wheelchair accessible entrance",
     "wheelchair accessible restroom",
+    "wheelchair accessible elevator",
     "wheelchair accessible",
+    "in store pickup",
+    "cash only",
+    "electronic",
+    "electronics",
     "paid parking lot",
     "free parking lot",
     "parking lot",
@@ -119,7 +124,10 @@ function normalize(tag: string) {
 function usableTags(tags: string[]) {
   return tags.filter((tag) => {
     const value = normalize(tag);
-    return value.length > 2 && !NOISE.has(value);
+    if (value.length < 3 || NOISE.has(value)) return false;
+    return !/wheelchair|accessible|elevator|parking|wifi|wi-fi|restroom|pickup|cash only|credit card|debit|gift card|nfc|mastercard|\bvisa\b|delivery|takeout|table service/.test(
+      value,
+    );
   });
 }
 
@@ -147,8 +155,8 @@ export function buildTasteDna(loves: ResolvedEntity[]): TasteDna {
       ? tags
           .slice(0, 3)
           .map((item) => item.name)
-          .join(" · ")
-      : "A specific, personal taste — not a tourist default";
+          .join(", ")
+      : "A specific, personal taste, not a tourist default";
 
   return { portrait, tags };
 }
@@ -210,7 +218,7 @@ function explain(place: PlaceInsight, loves: ResolvedEntity[]) {
   if (best && shared.length >= 2) {
     return {
       closestTo: best.name,
-      because: `Closest to ${best.name} — both ${shared.slice(0, 3).join(", ").toLowerCase()}${neighborhood}.`,
+      because: `Closest to ${best.name}: both ${shared.slice(0, 3).join(", ").toLowerCase()}${neighborhood}.`,
     };
   }
   if (best && shared.length === 1) {
@@ -253,8 +261,21 @@ function neighborhoodsFrom(twins: TwinPlace[]) {
     .slice(0, 5);
 }
 
-function buildWeek(twins: TwinPlace[]): WeekStop[] {
-  const days = [
+function weekPattern(goals: string[]): TwinRole[] {
+  if (goals.includes("people")) {
+    return ["gather", "restore", "gather", "restore", "gather", "stretch", "restore"];
+  }
+  if (goals.includes("new")) {
+    return ["stretch", "restore", "stretch", "gather", "stretch", "restore", "gather"];
+  }
+  return ["restore", "stretch", "gather", "restore", "gather", "stretch", "restore"];
+}
+
+function buildWeek(
+  twins: TwinPlace[],
+  prefs?: { freeDays?: string[]; goals?: string[] },
+): WeekStop[] {
+  const order = [
     "Monday",
     "Tuesday",
     "Wednesday",
@@ -263,25 +284,19 @@ function buildWeek(twins: TwinPlace[]): WeekStop[] {
     "Saturday",
     "Sunday",
   ];
+  const wanted = (prefs?.freeDays ?? []).filter((day) => order.includes(day));
+  const days = wanted.length > 0 ? order.filter((day) => wanted.includes(day)) : order;
   const buckets: Record<TwinRole, TwinPlace[]> = {
     restore: twins.filter((item) => item.role === "restore"),
     gather: twins.filter((item) => item.role === "gather"),
     stretch: twins.filter((item) => item.role === "stretch"),
   };
-  const pattern: TwinRole[] = [
-    "restore",
-    "stretch",
-    "gather",
-    "restore",
-    "gather",
-    "stretch",
-    "restore",
-  ];
+  const pattern = weekPattern(prefs?.goals ?? []);
   const used = new Set<string>();
   const week: WeekStop[] = [];
 
   for (let index = 0; index < days.length; index += 1) {
-    const preferred = pattern[index];
+    const preferred = pattern[index] ?? "restore";
     const fallback: TwinRole[] = [preferred, "restore", "gather", "stretch"];
     const pick = fallback
       .flatMap((role) => buckets[role])
@@ -321,6 +336,7 @@ export async function transplantTaste(
   origin: string,
   destination: string,
   loves: ResolvedEntity[],
+  prefs?: { freeDays?: string[]; goals?: string[] },
 ): Promise<TransplantResult> {
   const ids = loves.map((love) => love.id).filter(Boolean);
   if (ids.length === 0) {
@@ -343,7 +359,7 @@ export async function transplantTaste(
     twins,
     heatmap: heatmap.slice(0, 80),
     neighborhoods: neighborhoodsFrom(twins),
-    week: buildWeek(twins),
+    week: buildWeek(twins, prefs),
   };
 }
 

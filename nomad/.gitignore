@@ -34,6 +34,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# runtime anonymous pins (seed lives in code)
+/data/pins.json
+
 # vercel
 .vercel
 

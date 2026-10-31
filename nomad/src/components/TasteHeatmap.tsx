@@ -1,58 +1,145 @@
 "use client";
 
-import type { HeatmapPoint } from "@/lib/types";
+import { useEffect, useRef } from "react";
+import "leaflet/dist/leaflet.css";
+import type { HeatmapPoint, TwinPlace } from "@/lib/types";
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (char) => {
+    const map: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return map[char] ?? char;
+  });
+}
 
 export function TasteHeatmap({
   points,
   destination,
+  twins,
+  neighborhoods,
 }: {
   points: HeatmapPoint[];
   destination: string;
+  twins: TwinPlace[];
+  neighborhoods: { name: string; count: number }[];
 }) {
-  if (points.length === 0) return null;
+  const host = useRef<HTMLDivElement>(null);
+  const located = twins.filter(
+    (twin): twin is TwinPlace & { lat: number; lng: number } =>
+      twin.lat != null && twin.lng != null,
+  );
+  const signature = `${destination}|${located.map((twin) => `${twin.id}:${twin.lat}:${twin.lng}`).join(",")}|${points.length}`;
 
-  const lats = points.map((point) => point.lat);
-  const lngs = points.map((point) => point.lng);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs);
-  const maxLng = Math.max(...lngs);
-  const padLat = (maxLat - minLat || 0.02) * 0.08;
-  const padLng = (maxLng - minLng || 0.02) * 0.08;
-  const width = 640;
-  const height = 320;
+  useEffect(() => {
+    const node = host.current;
+    if (!node || (located.length === 0 && points.length === 0)) return;
 
-  function x(lng: number) {
-    return ((lng - (minLng - padLng)) / (maxLng - minLng + padLng * 2)) * width;
-  }
-  function y(lat: number) {
+    let map: { remove: () => void; invalidateSize: () => void } | null = null;
+    let alive = true;
+
+    (async () => {
+      const leaflet = await import("leaflet");
+      const L = leaflet.default ?? leaflet;
+      if (!alive || !node) return;
+
+      const accent =
+        getComputedStyle(document.documentElement).getPropertyValue("--color-accent").trim() ||
+        "#3d7ea6";
+      const ink =
+        getComputedStyle(document.documentElement).getPropertyValue("--color-accent-ink").trim() ||
+        "#fff";
+
+      const next = L.map(node, {
+        scrollWheelZoom: false,
+        zoomControl: true,
+      });
+      if (!alive) {
+        next.remove();
+        return;
+      }
+      map = next;
+
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap",
+        maxZoom: 19,
+      }).addTo(next);
+
+      const spots: [number, number][] = [];
+      for (const twin of located) {
+        spots.push([twin.lat, twin.lng]);
+        L.circleMarker([twin.lat, twin.lng], {
+          radius: 9,
+          color: ink,
+          weight: 2,
+          fillColor: accent,
+          fillOpacity: 1,
+        })
+          .bindPopup(
+            `<strong>${escapeHtml(twin.name)}</strong>${
+              twin.neighborhood ? `<br>${escapeHtml(twin.neighborhood)}` : ""
+            }`,
+          )
+          .addTo(next);
+      }
+
+      if (spots.length === 0) {
+        for (const point of points.slice(0, 40)) spots.push([point.lat, point.lng]);
+      }
+
+      if (spots.length === 1) {
+        next.setView(spots[0], 14);
+      } else if (spots.length > 1) {
+        next.fitBounds(L.latLngBounds(spots).pad(0.28));
+      }
+
+      window.setTimeout(() => {
+        if (alive) next.invalidateSize();
+      }, 180);
+    })();
+
+    return () => {
+      alive = false;
+      map?.remove();
+    };
+    // signature already captures the places that should redraw the map
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
+
+  if (located.length === 0 && points.length === 0) {
+    if (neighborhoods.length === 0) return null;
     return (
-      (1 - (lat - (minLat - padLat)) / (maxLat - minLat + padLat * 2)) * height
+      <div className="heatmap-board">
+        <p className="heatmap-kicker">{destination}</p>
+        <ul>
+          {neighborhoods.map((item) => (
+            <li key={item.name}>
+              <strong>{item.name}</strong>
+              <span>{item.count} matches</span>
+            </li>
+          ))}
+        </ul>
+      </div>
     );
   }
 
   return (
-    <div className="heatmap">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label={`Taste heatmap for ${destination}`}
-      >
-        {points.map((point, index) => (
-          <circle
-            key={`${point.lat}-${point.lng}-${index}`}
-            cx={x(point.lng)}
-            cy={y(point.lat)}
-            r={2.4 + point.affinity * 4.2}
-            fill="var(--accent)"
-            opacity={0.18 + point.affinity * 0.55}
-          />
-        ))}
-      </svg>
-      <p className="heatmap-caption">
-        Darker clusters are where your old-life taste is strongest in{" "}
-        {destination}.
-      </p>
+    <div className="map-frame">
+      <div
+        ref={host}
+        className="city-map"
+        role="region"
+        aria-label={`Map of matched places in ${destination}`}
+      />
+      {neighborhoods.length > 0 ? (
+        <p className="heatmap-caption">
+          {neighborhoods.map((item) => item.name).join(", ")}
+        </p>
+      ) : null}
     </div>
   );
 }

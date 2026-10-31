@@ -27,22 +27,30 @@ export function StatusProbe() {
   }, []);
 
   if (!health) {
-    return <p className="status">Checking Qloo…</p>;
+    return (
+      <p className="status probe" role="status">
+        Checking Qloo…
+      </p>
+    );
   }
 
   if (!health.ok) {
     return (
-      <p className="status status-bad">
-        Qloo is not connected{health.error ? ` — ${health.error}` : ""}
+      <p className="status status-bad probe" role="status">
+        Qloo is not connected{health.error ? `: ${health.error}` : ""}
       </p>
     );
   }
 
   return (
-    <p className="status status-ok">
+    <p className="status status-ok probe" role="status">
       Qloo is live
-      {health.qloo?.latencyMs != null ? ` · ${health.qloo.latencyMs}ms` : ""}
-      {health.qloo?.sample ? ` · resolved ${health.qloo.sample}` : ""}
+      {health.qloo?.latencyMs != null ? (
+        <span className="status-meta">{health.qloo.latencyMs}ms</span>
+      ) : null}
+      {health.qloo?.sample ? (
+        <span className="status-meta">resolved {health.qloo.sample}</span>
+      ) : null}
     </p>
   );
 }

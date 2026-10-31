@@ -82,3 +82,26 @@ export type TransplantResult = {
   neighborhoods: { name: string; count: number }[];
   week: WeekStop[];
 };
+
+export type PublicPin = {
+  id: string;
+  createdAt: string;
+  origin: string;
+  destination: string;
+  portrait: string;
+  tags: string[];
+  loves: { name: string; kind: string }[];
+  neighborhoods: string[];
+  twins: {
+    name: string;
+    role: TwinRole;
+    neighborhood: string | null;
+    because: string;
+  }[];
+  week: {
+    day: string;
+    name: string;
+    role: TwinRole;
+    neighborhood: string | null;
+  }[];
+};
